@@ -23,18 +23,19 @@ export function transportAppsScript(url, klucz, {limitMs = 30000} = {}) {
 }
 
 /** Udaje backend: te same akcje i reguły usuwania, dane w pamięci przeglądarki. */
-export function transportDemo(pamiec, {opoznienie = 700} = {}) {
-  const KLUCZ = 'stud-demo:backend';
+export function transportDemo(pamiec, {opoznienie = 700, prefiks = 'stud-demo', dzien = null} = {}) {
+  const KLUCZ = prefiks + ':backend';
+  const nowe = () => daneDemo(dzien || dzisISO());
   let stan = null;
   try { stan = JSON.parse(pamiec.getItem(KLUCZ)); } catch (e) { /* nowe dane */ }
-  if (!stan) stan = daneDemo(dzisISO());
+  if (!stan) stan = nowe();
   let zmiana = Date.now();
   const zapisz = () => { try { pamiec.setItem(KLUCZ, JSON.stringify(stan)); } catch (e) { /* bez zapisu */ } };
   return async (akcja, dane) => {
     await new Promise(r => setTimeout(r, opoznienie));
     if (akcja === 'ping') return {ok: true, wynik: {zmiana: String(zmiana)}};
     if (akcja === 'stan') return {ok: true, wynik: {...JSON.parse(JSON.stringify(stan)), ostrzezenia: [], zmiana: String(zmiana)}};
-    if (akcja === 'resetDemo') { stan = daneDemo(dzisISO()); zmiana = Date.now(); zapisz(); return {ok: true, wynik: {}}; }
+    if (akcja === 'resetDemo') { stan = nowe(); zmiana = Date.now(); zapisz(); return {ok: true, wynik: {}}; }
     if (akcja === 'usunUczestnika' && stan.wplaty.some(w => w.uid === dane.id)) return {ok: false, blad: 'Ta osoba ma wpłaty. Najpierw usuń wpłaty, jeśli na pewno były błędne.'};
     if (akcja === 'usunWydatek' && (stan.wydatki.find(e => e.id === dane.id) || {platnosci: []}).platnosci.length) return {ok: false, blad: 'Ten wydatek ma płatności. Najpierw je usuń.'};
     zastosuj(stan, {akcja, dane});

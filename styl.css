@@ -225,4 +225,31 @@ details[open] summary{margin-bottom:10px}
 .start img{width:64px;height:64px;border-radius:14px}
 
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
-@media print{.side,.tabbar,.pasek,.toast,.btn{display:none!important}.app{display:block}main{padding:0}}
+/* wydruk: jasne kolory niezależnie od motywu, bez menu i przycisków, znaczniki rat w kolorze */
+.tylko-druk{display:none}
+.lista-gosci{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+@media print{
+  :root{--bg:#fff;--surface:#fff;--surface-2:#eef1f6;--line:#c5ccd9;--ink:#000;--muted:#444;--accent:#1f3590;--accent-soft:#e6ebf8;
+    --ok:#14633e;--ok-soft:#dbeee3;--warn:#7a4a04;--warn-soft:#f5e8cf;--bad:#9d1b24;--bad-soft:#f7dadc;--shadow:none;color-scheme:light}
+  @page{margin:14mm 12mm}
+  body{background:#fff;font-size:10.5pt}
+  .side,.tabbar,.pasek,.toast,.modal,.btn,.filtry,.baner,.sync,.nie-drukuj{display:none!important}
+  .app{display:block;min-height:0}
+  main{padding:0}
+  .wrap{max-width:none;gap:14px}
+  .tylko-druk{display:block}
+  #druk-info{margin-bottom:8px}
+  .hide-m{display:table-cell!important}
+  h1{font-size:20pt}
+  .card,.tab-wrap{box-shadow:none}
+  .tab-wrap{overflow:visible}
+  th,td{padding:5px 8px}
+  thead{display:table-header-group}
+  tfoot{display:table-row-group}
+  tr,.rata-card,.klasa-tile,.lista-gosci .card,.hero{break-inside:avoid}
+  .rc,.pill,.bar,.bar span,.badge,th,tfoot td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  a{color:inherit;text-decoration:none}
+  .lista-gosci{grid-template-columns:repeat(2,1fr)}
+  .druk-strony .grupa + .grupa{break-before:page}
+  .druk-jeden .grupa:not(.druk-ten){display:none!important}
+}

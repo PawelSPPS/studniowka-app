@@ -5,8 +5,10 @@ import {transportAppsScript, transportDemo} from './api.js';
 
 const {esc, zl, dt, dtk, RZ, procent} = L;
 const $ = s => document.querySelector(s);
-const DEMO = new URLSearchParams(location.search).has('demo');
-const PREF = DEMO ? 'stud-demo' : 'stud';
+const PARAM = new URLSearchParams(location.search);
+const DEMO = PARAM.has('demo');
+const DZIEN_DEMO = DEMO && /^\d{4}-\d{2}-\d{2}$/.test(PARAM.get('dzien') || '') ? PARAM.get('dzien') : null;
+const PREF = DEMO ? 'stud-demo' + (DZIEN_DEMO ? ':' + DZIEN_DEMO : '') : 'stud';
 const pamiec = (() => {
   try { localStorage.setItem('stud:test', '1'); localStorage.removeItem('stud:test'); return localStorage; } catch (e) {
     const m = new Map();
@@ -189,7 +191,7 @@ function widokPulpit() {
   const goscie = S.ustawienia.goscie || 0;
   return `${banery()}
   <div class="view-head"><div><span class="eyebrow">Stan na ${dt(D)}</span><h1>Pulpit</h1></div>
-    <a class="btn primary" href="#wplata">+ Dodaj wpłatę</a></div>
+    <span class="przyciski"><button class="btn" data-akcja="drukuj" data-id="">Drukuj</button><a class="btn primary" href="#wplata">+ Dodaj wpłatę</a></span></div>
   ${!S.uczestnicy.length ? `<div class="baner"><span><b>Nie ma jeszcze uczestników.</b> Wklej listę z Excela w Ustawieniach albo dodaj osoby w widoku klasy.</span><a class="btn small" href="#ustawienia">Import listy</a></div>` : ''}
   <section class="card hero">
     <div class="hero-main">
@@ -239,7 +241,8 @@ function widokKlasy() {
   }).join('');
   const s = L.sumy(S.uczestnicy, R);
   return `
-  <div class="view-head"><div><span class="eyebrow">Stan na ${dt(D)}</span><h1>Klasy</h1></div></div>
+  <div class="view-head"><div><span class="eyebrow">Stan na ${dt(D)}</span><h1>Klasy</h1></div>
+    <button class="btn" data-akcja="drukuj" data-id="">Drukuj</button></div>
   <div class="tab-wrap"><table>
     <thead><tr><th>Klasa</th><th class="num">Osób</th><th class="num hide-m">Par</th><th class="num">Wpłacono</th><th class="num hide-m">Wymagane</th><th class="num">%</th><th class="num">Zaległ.</th></tr></thead>
     <tbody>${wiersze}</tbody>
@@ -273,15 +276,16 @@ function widokKlasa(id) {
       <td>${pillStatus(u)}</td></tr>`;
   }).join('') || `<tr><td colspan="6"><div class="pusto">Brak osób w tym widoku.</div></td></tr>`;
   return `
-  <div class="view-head"><div><a class="small" href="#klasy">‹ Klasy</a><h1>${esc(k.pelna)}</h1>
+  <div class="view-head"><div><a class="small nie-drukuj" href="#klasy">‹ Klasy</a><span class="eyebrow tylko-druk">Stan na ${dt(D)}${filtrKlasy !== 'wszyscy' ? ' · tylko: ' + {zalegla: 'zaległości', terminowo: 'w terminie', oplacone: 'opłacone'}[filtrKlasy] : ''}</span><h1>${esc(k.pelna)}</h1>
     <span class="muted">${s.osob} os. (${s.par} par) · wpłacono ${zl(s.wplacono)} z ${zl(s.wymagane)}${s.zaleglych ? ` · <span class="c-bad">zaległości ${zl(s.zaleglosc)}</span>` : ''}</span></div>
-    <button class="btn" data-akcja="nowa-osoba" data-id="${esc(k.nazwa)}">+ Dodaj osobę</button></div>
+    <span class="przyciski"><button class="btn" data-akcja="drukuj" data-id="">Drukuj</button><button class="btn" data-akcja="nowa-osoba" data-id="${esc(k.nazwa)}">+ Dodaj osobę</button></span></div>
   <div class="filtry">${filtry}</div>
   <div class="tab-wrap"><table>
     <thead><tr><th>Lp.</th><th>Nazwisko i imię</th><th>Raty</th><th class="num hide-m">Wpłacono</th><th class="num hide-m">Pozostało</th><th>Status</th></tr></thead>
     <tbody>${wiersze}</tbody>
+    ${lista.length ? `<tfoot><tr><td></td><td>Razem (${lista.length} os.)</td><td></td><td class="num hide-m">${zl(lista.reduce((a, u) => a + R.get(u.id).wplacono, 0))}</td><td class="num hide-m">${zl(lista.reduce((a, u) => a + R.get(u.id).pozostalo, 0))}</td><td></td></tr></tfoot>` : ''}
   </table></div>
-  <p class="small muted">Kliknij osobę, żeby dodać wpłatę albo poprawić dane. Znaczniki: <span class="rc-row"><span class="rc ok">I</span></span> opłacona, <span class="rc-row"><span class="rc czesc">I</span></span> częściowo, <span class="rc-row"><span class="rc zal">I</span></span> zaległa, <span class="rc-row"><span class="rc">I</span></span> czeka na termin.</p>`;
+  <p class="small muted"><span class="nie-drukuj">Kliknij osobę, żeby dodać wpłatę albo poprawić dane. </span>Znaczniki: <span class="rc-row"><span class="rc ok">I</span></span> opłacona, <span class="rc-row"><span class="rc czesc">I</span></span> częściowo, <span class="rc-row"><span class="rc zal">I</span></span> zaległa, <span class="rc-row"><span class="rc">I</span></span> czeka na termin.</p>`;
 }
 
 function widokWplata() {
@@ -322,35 +326,37 @@ function widokZaleglosci() {
   return `
   <div class="view-head"><div><span class="eyebrow">Stan na ${dt(D)}</span><h1>Zaległości</h1>
     <span class="muted">${s.zaleglych} osób, razem <b class="c-bad">${zl(s.zaleglosc)}</b>. Listy do wysłania wychowawcom lub skarbnikom klas.</span></div>
-    <button class="btn primary" data-akcja="kopiuj-zal" data-id="">Kopiuj wszystkie klasy</button></div>
-  ${grupy.map(({k, lista}) => `<section class="grupa">
+    <span class="przyciski"><button class="btn" data-akcja="drukuj" data-id="">Drukuj (klasa na stronę)</button><button class="btn primary" data-akcja="kopiuj-zal" data-id="">Kopiuj wszystkie klasy</button></span></div>
+  <div class="sec druk-strony">${grupy.map(({k, lista}) => `<section class="grupa">
+    <span class="eyebrow tylko-druk">Zaległości we wpłatach na studniówkę · stan na ${dt(D)}</span>
     <div class="grupa-head"><h2>${esc(k.pelna)} <span class="muted small">· ${lista.length} os. · ${zl(lista.reduce((a, u) => a + R.get(u.id).zaleglosc, 0))}</span></h2>
-      <button class="btn small" data-akcja="kopiuj-zal" data-id="${esc(k.nazwa)}">Kopiuj listę</button></div>
+      <span class="przyciski"><button class="btn small" data-akcja="drukuj" data-id="${esc(k.nazwa)}">Drukuj</button><button class="btn small" data-akcja="kopiuj-zal" data-id="${esc(k.nazwa)}">Kopiuj listę</button></span></div>
     <div class="tab-wrap"><table><tbody>${lista.map((u, i) => {
       const r = R.get(u.id), x = r.stanRat.find(z => z.st === 'zal');
       return `<tr data-akcja="osoba" data-id="${esc(u.id)}" tabindex="0"><td class="lp">${i + 1}</td><td><b>${esc(u.nazwa)}</b><span class="sub">${u.typ === 'para' ? 'para' : 'osoba'} · wpłacono ${zl(r.wplacono)}</span></td>
         <td>${znaczniki(u)}</td><td class="num"><b class="c-bad">${zl(r.zaleglosc)}</b><span class="sub">${RZ[x.nr - 1]} rata, ${dtk(x.termin)}</span></td></tr>`;
-    }).join('')}</tbody></table></div></section>`).join('')}`;
+    }).join('')}</tbody></table></div></section>`).join('')}</div>`;
 }
 
 function widokWydatki() {
   const w = L.wydatkiSumy(S.wydatki);
   const wiersze = S.wydatki.map(e => {
     const zap = L.zaplaconoWydatek(e), poz = e.umowa - zap;
-    return `<tr data-akcja="wydatek" data-id="${esc(e.id)}" tabindex="0"><td><b>${esc(e.kat)}</b><span class="sub">${esc(e.kontrahent)}</span></td>
+    const plat = e.platnosci.slice().sort((a, b) => a.data.localeCompare(b.data)).map(p => `${esc(p.opis || 'płatność')} ${dt(p.data)}: ${zl(p.kwota)}`).join(' · ');
+    return `<tr data-akcja="wydatek" data-id="${esc(e.id)}" tabindex="0"><td><b>${esc(e.kat)}</b><span class="sub">${esc(e.kontrahent)}</span>${plat ? `<span class="sub tylko-druk">${plat}</span>` : ''}</td>
       <td class="num">${zl(e.umowa)}</td><td class="num">${zl(zap)}</td>
       <td class="num">${poz === 0 ? '<span class="pill ok">zapłacone</span>' : poz < 0 ? `<span class="pill info">nadpłata ${zl(-poz)}</span>` : zl(poz)}</td></tr>`;
   }).join('') || `<tr><td colspan="4"><div class="pusto">Nie ma jeszcze wydatków.</div></td></tr>`;
   return `
   <div class="view-head"><div><span class="eyebrow">Stan na ${dt(D)}</span><h1>Wydatki</h1>
     <span class="muted">Umowy ${zl(w.umowy)} · zapłacono ${zl(w.zaplacono)} · zostało ${zl(w.pozostalo)}</span></div>
-    <button class="btn" data-akcja="nowy-wydatek" data-id="">+ Dodaj wydatek</button></div>
+    <span class="przyciski"><button class="btn" data-akcja="drukuj" data-id="">Drukuj</button><button class="btn" data-akcja="nowy-wydatek" data-id="">+ Dodaj wydatek</button></span></div>
   <div class="tab-wrap"><table>
     <thead><tr><th>Koszt</th><th class="num">Umowa</th><th class="num">Zapłacono</th><th class="num">Pozostało</th></tr></thead>
     <tbody>${wiersze}</tbody>
     <tfoot><tr><td>Razem</td><td class="num">${zl(w.umowy)}</td><td class="num">${zl(w.zaplacono)}</td><td class="num">${zl(w.pozostalo)}</td></tr></tfoot>
   </table></div>
-  <p class="small muted">Kliknij wydatek, żeby dodać zaliczkę, dopłatę lub zwrot albo poprawić kwotę z umowy.</p>`;
+  <p class="small muted nie-drukuj">Kliknij wydatek, żeby dodać zaliczkę, dopłatę lub zwrot albo poprawić kwotę z umowy.</p>`;
 }
 
 function goscieTekst() {
@@ -363,10 +369,10 @@ function goscieTekst() {
 function widokGoscie() {
   const pary = S.uczestnicy.filter(u => u.typ === 'para').length, n = S.uczestnicy.length, g = S.ustawienia.goscie || 0;
   return `
-  <div class="view-head"><div><h1>Lista gości</h1>
+  <div class="view-head"><div><span class="eyebrow tylko-druk">Stan na ${dt(D)}</span><h1>Lista gości</h1>
     <span class="muted">${n} uczniów + ${pary} os. towarzyszących + ${g} nauczycieli i gości = <b>${n + pary + g}</b> miejsc</span></div>
-    <button class="btn primary" data-akcja="kopiuj-goscie" data-id="">Kopiuj listę do winietek</button></div>
-  <div class="klasy-grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
+    <span class="przyciski"><button class="btn" data-akcja="drukuj" data-id="">Drukuj</button><button class="btn primary" data-akcja="kopiuj-goscie" data-id="">Kopiuj listę do winietek</button></span></div>
+  <div class="klasy-grid lista-gosci">
   ${K.map(k => {
     const l = S.uczestnicy.filter(u => u.klasa === k.nazwa).sort(L.porownaj);
     return `<div class="card pad grupa"><h2>${esc(k.pelna)} <span class="muted small">· ${l.length + l.filter(u => u.typ === 'para').length} miejsc</span></h2>
@@ -555,6 +561,20 @@ function toast(msg, akcja) {
   t.innerHTML = `<span>${esc(msg)}</span>` + (akcja ? `<button data-akcja="${akcja.a}" data-id="${esc(akcja.id)}">${akcja.label}</button>` : '');
   t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 6000);
 }
+/** Drukuje bieżący widok; z grupą (zaległości jednej klasy) - tylko tę grupę. */
+function drukuj(grupa) {
+  if (grupa) { grupa.classList.add('druk-ten'); document.body.classList.add('druk-jeden'); }
+  window.print();
+}
+window.addEventListener('beforeprint', () => {
+  const t = new Date();
+  $('#druk-info').textContent = `Studniówka 2026/2027 · wydruk z aplikacji ${dt(L.dzisISO(t))}, godz. ${t.toLocaleTimeString('pl-PL', {hour: '2-digit', minute: '2-digit'})}`;
+});
+window.addEventListener('afterprint', () => {
+  document.body.classList.remove('druk-jeden');
+  document.querySelectorAll('.druk-ten').forEach(g => g.classList.remove('druk-ten'));
+});
+
 function kopiuj(tytul, txt) {
   if (!navigator.clipboard) return oknoTekst(tytul, txt);
   navigator.clipboard.writeText(txt).then(() => toast('Skopiowano. Wklej w wiadomości lub w e-mailu.'), () => oknoTekst(tytul, txt));
@@ -566,7 +586,7 @@ function trasa() {
   return h.startsWith('klasa-') ? ['klasa', h.slice(6)] : [h, null];
 }
 function render() {
-  D = L.dzisISO();
+  D = DZIEN_DEMO || L.dzisISO();
   S = M.widok();
   const [widok, arg] = trasa();
   pokazStatus();
@@ -623,7 +643,8 @@ document.addEventListener('click', e => {
     case 'instaluj': if (instalacja) { instalacja.prompt(); instalacja.userChoice.finally(() => { instalacja = null; render(); }); } break;
     case 'instaluj-nie': try { pamiec.setItem(PREF + ':bez-instalacji', '1'); } catch (err) { /* bez zapamiętania */ } render(); break;
     case 'odlacz': ['stud:polaczenie', 'stud:dane', 'stud:ostatnie', 'stud:bez-instalacji'].forEach(k => pamiec.removeItem(k)); location.replace(location.pathname); break;
-    case 'reset-demo': transport('resetDemo', {}).then(() => { pamiec.removeItem('stud-demo:dane'); pamiec.removeItem('stud-demo:ostatnie'); location.reload(); }); break;
+    case 'reset-demo': transport('resetDemo', {}).then(() => { pamiec.removeItem(PREF + ':dane'); pamiec.removeItem(PREF + ':ostatnie'); location.reload(); }); break;
+    case 'drukuj': drukuj(id ? el.closest('.grupa') : null); break;
   }
 });
 document.addEventListener('keydown', e => {
@@ -714,7 +735,7 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instal
 function start() {
   const p = wczytajPolaczenie();
   if (!p) return ekranPolaczenia();
-  transport = DEMO ? transportDemo(pamiec) : transportAppsScript(p.url, p.klucz);
+  transport = DEMO ? transportDemo(pamiec, {prefiks: PREF, dzien: DZIEN_DEMO}) : transportAppsScript(p.url, p.klucz);
   M = new Magazyn({transport, pamiec, prefiks: PREF});
   M.wczytaj();
   M.nasluchuj(({typ, blad}) => {
