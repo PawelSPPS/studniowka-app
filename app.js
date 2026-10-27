@@ -391,19 +391,18 @@ function widokUstawienia() {
     </div>
     <div class="przyciski">
       <button class="btn" data-akcja="odswiez" data-id="">Odśwież teraz</button>
-      ${S.arkuszUrl ? `<a class="btn" href="${esc(S.arkuszUrl)}" target="_blank" rel="noopener">Otwórz Arkusz Google</a>` : ''}
       ${instalacja ? '<button class="btn" data-akcja="instaluj" data-id="">Zainstaluj aplikację</button>' : ''}
     </div>
     ${ios ? '<p class="small muted">iPhone: żeby dodać ikonę, w Safari stuknij Udostępnij, potem „Do ekranu początkowego”.</p>' : ''}
-    <p class="small muted">Arkusz Google jest kopią wszystkiego, co wpisujesz w aplikacji. Możesz go otworzyć i wydrukować jak zwykły plik.</p>
+    <p class="small muted">Wszystko, co wpisujesz w aplikacji, zapisuje się w Arkuszu Google na Twoim Dysku. Zmiany rób tylko tutaj, w aplikacji - Arkusz jest kopią i ostrzeże przed ręczną edycją.</p>
   </section>
   ${S.ostrzezenia && S.ostrzezenia.length ? `<section class="card pad sec"><h2 class="c-bad">Błędne wiersze w Arkuszu</h2>
-    <p class="small muted">Te wiersze są pominięte w rozliczeniu. Popraw je w Arkuszu, aplikacja odświeży się sama.</p>
+    <p class="small muted">Te wiersze są pominięte w rozliczeniu. Daj znać Pawłowi - poprawi je w Arkuszu, a aplikacja odświeży się sama.</p>
     <ul class="small">${S.ostrzezenia.map(o => `<li>${esc(o)}</li>`).join('')}</ul></section>` : ''}
   <section class="sec"><h2>Raty</h2>
     <div class="tab-wrap"><table><thead><tr><th>Typ</th><th class="num">I rata</th><th class="num">II rata</th><th class="num">III rata</th><th class="num">Razem</th></tr></thead><tbody>${harm}</tbody></table></div>
-    <p class="small muted">Kwoty i terminy zmienia się w Arkuszu, w zakładce „Raty”.</p></section>
-  <section class="sec"><h2>Klasy</h2><p>${K.map(k => esc(k.pelna)).join(', ')}</p><p class="small muted">Lista klas jest w Arkuszu, w zakładce „Klasy”.</p></section>
+    <p class="small muted">Zmianę kwot lub terminów rat zgłoś Pawłowi.</p></section>
+  <section class="sec"><h2>Klasy</h2><p>${K.map(k => esc(k.pelna)).join(', ')}</p><p class="small muted">Zmianę listy klas zgłoś Pawłowi.</p></section>
   <section class="card pad sec"><h2>Nauczyciele i goście</h2>
     <form class="form" data-form="goscie"><label for="ust-goscie">Liczba osób (tylko do liczby miejsc na sali, nie płacą)
       <input id="ust-goscie" type="number" min="0" step="1" value="${S.ustawienia.goscie || 0}" inputmode="numeric"></label>
