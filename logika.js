@@ -83,16 +83,16 @@ export function wydatkiSumy(wydatki) {
 }
 
 export function znajdzKlase(klasy, v) {
-  const s = norm(v).replace(/\s+/g, ' ').trim().replace(/^4\s*/, '');
+  const s = norm(v).replace(/\s+/g, ' ').trim().replace(/^(klasa|kl\.?)\s*/, '').replace(/^[1-5]\s*/, '');
   if (!s) return null;
   return klasy.find(k => norm(k.nazwa) === s || norm(k.pelna) === s || slug(k.nazwa) === slug(s)) || null;
 }
 
-/** Wklejone z Excela wiersze: nazwisko i imię, klasa, osoba/para, osoba towarzysząca. Tabulatory albo średniki. */
+/** Wklejone z Excela wiersze: nazwisko i imię, klasa, osoba/para, osoba towarzysząca. Tabulatory (Excel), średniki albo przecinki. */
 export function parsujImport(txt, klasy, uczestnicy) {
   const istniejace = new Set(uczestnicy.map(u => norm(u.nazwa).trim() + '|' + u.klasa));
   return String(txt).split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
-    const c = (l.includes('\t') ? l.split('\t') : l.split(';')).map(x => x.trim());
+    const c = l.split(l.includes('\t') ? '\t' : l.includes(';') ? ';' : ',').map(x => x.trim());
     const [nazwa = '', kl = '', typTxt = '', partner = ''] = c;
     const k = znajdzKlase(klasy, kl);
     const typ = /para/i.test(typTxt) || partner ? 'para' : 'osoba';

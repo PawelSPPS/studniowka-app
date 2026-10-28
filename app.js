@@ -194,7 +194,7 @@ function widokPulpit() {
   return `${banery()}
   <div class="view-head"><div><span class="eyebrow">Stan na ${dt(D)}</span><h1>Pulpit</h1></div>
     <span class="przyciski"><button class="btn" data-akcja="drukuj" data-id="">Drukuj</button><a class="btn primary" href="#wplata">+ Dodaj wpłatę</a></span></div>
-  ${!S.uczestnicy.length ? `<div class="baner"><span><b>Nie ma jeszcze uczestników.</b> Wklej listę z Excela w Ustawieniach albo dodaj osoby w widoku klasy.</span><a class="btn small" href="#ustawienia">Import listy</a></div>` : ''}
+  ${!S.uczestnicy.length ? `<div class="baner"><span><b>Nie ma jeszcze uczestników.</b> Wklej listę z Excela w Ustawieniach albo dodaj osoby w widoku klasy.</span><button class="btn small" data-akcja="do-importu" data-id="">Import listy</button></div>` : ''}
   <section class="card hero">
     <div class="hero-main">
       <span class="eyebrow">Zebrano od uczestników</span>
@@ -416,10 +416,18 @@ function widokUstawienia() {
     <form class="form" data-form="goscie"><label for="ust-goscie">Liczba osób (tylko do liczby miejsc na sali, nie płacą)
       <input id="ust-goscie" type="number" min="0" step="1" value="${S.ustawienia.goscie || 0}" inputmode="numeric"></label>
       <div><button class="btn primary">Zapisz</button></div></form></section>
-  <section class="card pad sec"><h2>Import uczestników</h2>
-    <p class="small muted">Skopiuj kolumny z Excela i wklej poniżej. Kolejność: nazwisko i imię, klasa, osoba/para, opcjonalnie nazwisko osoby towarzyszącej (tylko para).</p>
+  <section class="card pad sec" id="sekcja-import"><h2>Import uczestników</h2>
+    <p class="small">Każda osoba w osobnej linii, kolumny w tej kolejności:</p>
+    <ol class="small">
+      <li><b>Nazwisko i imię</b> - najpierw nazwisko (Nowak Anna), tak sortuje się lista i dopasowują przelewy.</li>
+      <li><b>Klasa</b> - np. A, 4A, kl. A, KSP, I Społeczna.</li>
+      <li><b>osoba</b> albo <b>para</b> (z osobą towarzyszącą).</li>
+      <li>Nazwisko osoby towarzyszącej - tylko para, można pominąć.</li>
+    </ol>
+    <p class="small muted"><b>Z Excela:</b> zaznacz te kolumny (bez nagłówka), Ctrl+C, kliknij w pole niżej, Ctrl+V. <b>Ręcznie:</b> oddzielaj kolumny przecinkiem albo średnikiem, np. <code>Nowak Anna, B, osoba</code> albo <code>Kowalski Jan, 4C, para, Zielińska Ola</code>. Po kliknięciu „Sprawdź” zobaczysz podgląd - nic się nie zapisze, dopóki nie klikniesz „Dodaj”.</p>
+    <p class="small muted">Pojedynczą osobę dodasz też w widoku klasy: <b>Klasy &gt; klasa &gt; + Dodaj osobę</b>. Błędny wpis usuniesz, klikając osobę na liście klasy: <b>Dane uczestnika &gt; Usuń osobę</b> (najpierw trzeba usunąć jej wpłaty).</p>
     <form class="form" data-form="import">
-      <label for="imp-tekst">Wklejone wiersze<textarea id="imp-tekst" placeholder="Nowak Anna&#9;B&#9;osoba"></textarea></label>
+      <label for="imp-tekst">Lista osób<textarea id="imp-tekst" placeholder="Nowak Anna, B, osoba&#10;Kowalski Jan, 4C, para"></textarea></label>
       <div class="przyciski"><button class="btn">Sprawdź</button></div>
     </form>
     <div id="imp-podglad">${importPodglad ? importPodgladHtml() : ''}</div>
@@ -488,7 +496,7 @@ function widokBank() {
       ${DEMO ? '<button class="btn" data-akcja="bank-demo" data-id="">Wczytaj przykładowy plik</button>' : ''}</div>`;
   const glowa = `<div class="view-head"><div><span class="eyebrow">Wpłaty z wyciągu</span><h1>Import z banku</h1></div>
     ${bank ? '<button class="btn" data-akcja="bank-wyczysc" data-id="">Inny plik</button>' : ''}</div>`;
-  if (!S.uczestnicy.length) return `${glowa}<div class="baner"><span><b>Najpierw potrzebna jest lista uczestników.</b> Wpłaty dopasowuję do osób z listy.</span><a class="btn small" href="#ustawienia">Import listy</a></div><section class="card pad sec">${kroki}</section>`;
+  if (!S.uczestnicy.length) return `${glowa}<div class="baner"><span><b>Najpierw potrzebna jest lista uczestników.</b> Wpłaty dopasowuję do osób z listy.</span><button class="btn small" data-akcja="do-importu" data-id="">Import listy</button></div><section class="card pad sec">${kroki}</section>`;
   if (!bank) return `${glowa}<section class="card pad sec"><h2>Jak pobrać plik z Millennium</h2>${kroki}${wybor}</section>`;
 
   const wiersze = bank.wplywy.map((w, i) => ({w, i, st: stanWplywu(w)}));
@@ -532,6 +540,16 @@ function widokBank() {
     <thead><tr><th></th><th>Data</th><th class="num">Kwota</th><th>Tytuł i nadawca</th><th>Uczestnik</th><th>Stan</th></tr></thead>
     <tbody>${tabela}</tbody></table></div>
   ${zapisz}`;
+}
+
+/** Przycisk "Import listy" z Pulpitu i importu z banku: Ustawienia, przewinięte do importu uczestników, kursor w polu. */
+let doImportu = false;
+function przewinDoImportu() {
+  doImportu = false;
+  const s = $('#sekcja-import');
+  if (!s) return;
+  s.scrollIntoView({behavior: 'smooth', block: 'start'});
+  $('#imp-tekst').focus({preventScroll: true});
 }
 
 /** Przerysowanie po zmianie wyboru w imporcie - z bieżącego stanu, bez przywracania starych wartości pól. */
@@ -753,6 +771,7 @@ document.addEventListener('click', e => {
     case 'reset-demo': transport('resetDemo', {}).then(() => { pamiec.removeItem(PREF + ':dane'); pamiec.removeItem(PREF + ':ostatnie'); location.reload(); }); break;
     case 'drukuj': drukuj(id ? el.closest('.grupa') : null); break;
     case 'bank-demo': wczytajWyciag(wyciagDemo(daneDemo(D), D), 'przyklad-millennium.csv'); break;
+    case 'do-importu': if (location.hash === '#ustawienia') przewinDoImportu(); else { doImportu = true; location.hash = 'ustawienia'; } break;
     case 'bank-wyczysc': bank = null; render(); break;
     case 'bank-filtr': filtrBanku = id; rysujBank(); break;
     case 'bank-zapisz': zapiszZBanku(); break;
@@ -861,6 +880,7 @@ $('#modal').addEventListener('click', e => { if (e.target === $('#modal')) zamkn
 window.addEventListener('hashchange', () => {
   if (L.parsujLinkPolaczenia(location.hash)) { location.reload(); return; }
   filtrKlasy = 'wszyscy'; zamknij(); render(); window.scrollTo(0, 0);
+  if (doImportu) przewinDoImportu();
   if (location.hash === '#wplata' && matchMedia('(min-width:900px)').matches) $('#szukaj')?.focus();
 });
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instalacja = e; if (M) render(); });
