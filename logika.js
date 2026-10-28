@@ -105,6 +105,141 @@ export function parsujImport(txt, klasy, uczestnicy) {
   });
 }
 
+// ---------- import wyciągu z banku (Millennium, CSV) ----------
+
+/** CSV z cudzysłowami ("" w środku pola, nowe linie w polu). Separator wykrywany z pierwszej linii: ; , albo tabulator. */
+export function parsujCSV(tekst) {
+  const t = String(tekst).replace(/^﻿/, '');
+  const pierwsza = t.slice(0, t.search(/\r?\n/) >>> 0 || t.length);
+  const ile = z => pierwsza.split(z).length;
+  const sep = [';', '\t', ','].sort((a, b) => ile(b) - ile(a))[0];
+  const wiersze = [];
+  let wiersz = [], pole = '', cudz = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (cudz) {
+      if (c === '"' && t[i + 1] === '"') { pole += '"'; i++; } else if (c === '"') cudz = false; else pole += c;
+    } else if (c === '"') cudz = true;
+    else if (c === sep) { wiersz.push(pole); pole = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && t[i + 1] === '\n') i++;
+      wiersz.push(pole); pole = '';
+      if (wiersz.some(x => x.trim())) wiersze.push(wiersz);
+      wiersz = [];
+    } else pole += c;
+  }
+  wiersz.push(pole);
+  if (wiersz.some(x => x.trim())) wiersze.push(wiersz);
+  return wiersze.map(w => w.map(x => x.trim()));
+}
+
+/** Data z wyciągu: 2026-10-30, 30-10-2026, 30.10.2026, 30/10/2026 (także z godziną). */
+export function dataZ(s) {
+  const v = String(s ?? '').trim();
+  let m = v.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = v.match(/^(\d{1,2})[-./](\d{1,2})[-./](\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return '';
+}
+
+/** Kwota z wyciągu: "1 234,56", "1234.56", "-500,00", "+500,00 PLN". Puste = 0. */
+export function kwotaWyciag(s) {
+  let v = String(s ?? '').replace(/[\s ]|zł|PLN/gi, '');
+  if (!v) return 0;
+  if (v.includes(',') && v.includes('.')) v = v.lastIndexOf(',') > v.lastIndexOf('.') ? v.replace(/\./g, '').replace(',', '.') : v.replace(/,/g, '');
+  else v = v.replace(',', '.');
+  const n = parseFloat(v);
+  return isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+}
+
+/** Krótki, stały skrót tekstu (dwa FNV-1a 32-bit) - z niego ID wpłaty, więc ten sam przelew ma zawsze to samo ID. */
+export function skrot(s) {
+  let a = 0x811c9dc5, b = 0x01000193 ^ 0x5bd1e995;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    a = Math.imul(a ^ c, 16777619) >>> 0;
+    b = Math.imul(b ^ c, 2246822519) >>> 0;
+  }
+  return a.toString(36).padStart(7, '0') + b.toString(36).padStart(7, '0');
+}
+
+const KOLUMNY_WYCIAGU = {
+  data: ['data transakcji', 'data operacji', 'data ksiegowania', 'data waluty', 'data rozliczenia', 'data'],
+  kwota: ['kwota operacji', 'kwota transakcji', 'kwota'],
+  uznania: ['uznania', 'uznanie', 'wplywy', 'wplyw', 'ma'],
+  obciazenia: ['obciazenia', 'obciazenie', 'wydatki', 'wyplywy', 'winien'],
+  nadawca: ['odbiorca/zleceniodawca', 'zleceniodawca/odbiorca', 'nadawca/odbiorca', 'odbiorca/nadawca', 'nadawca', 'zleceniodawca', 'kontrahent', 'nazwa kontrahenta', 'dane kontrahenta'],
+  tytul: ['opis', 'tytul', 'tytul operacji', 'tytul przelewu', 'opis operacji', 'opis transakcji', 'szczegoly'],
+  rachunek: ['na konto/z konta', 'z konta/na konto', 'rachunek kontrahenta', 'numer rachunku kontrahenta', 'konto kontrahenta']
+};
+
+/**
+ * Wyciąg z banku -> lista wpływów {id, data, kwota, nadawca, tytul}. Kolumny szukane po nagłówkach,
+ * więc zadziała także, jeśli bank zmieni kolejność. Obciążenia (wydatki) są pomijane i tylko liczone.
+ */
+export function parsujWyciag(tekst) {
+  const wiersze = parsujCSV(tekst);
+  const iNag = wiersze.findIndex(w => w.some(x => norm(x).startsWith('data')) && w.some(x => /kwota|uznani|obciazen|wplyw/.test(norm(x))));
+  if (iNag < 0) return {blad: 'Nie rozpoznano pliku. Potrzebny jest plik CSV z historią transakcji z Millenetu (Moje finanse > Wyciąg z historii transakcji).', wplywy: []};
+  const nag = wiersze[iNag].map(x => norm(x).replace(/\s+/g, ' ').trim());
+  const kol = {};
+  for (const [k, nazwy] of Object.entries(KOLUMNY_WYCIAGU)) {
+    for (const n of nazwy) { const i = nag.indexOf(n); if (i >= 0) { kol[k] = i; break; } }
+  }
+  if (kol.data == null || (kol.kwota == null && kol.uznania == null)) return {blad: 'W pliku brakuje kolumny z datą albo kwotą. Prześlij plik Pawłowi - dopasuje import do tego formatu.', wplywy: []};
+  const wplywy = [], wystapienia = new Map();
+  let obciazen = 0, bledow = 0;
+  for (const w of wiersze.slice(iNag + 1)) {
+    const pole = k => kol[k] == null ? '' : (w[kol[k]] || '');
+    const data = dataZ(pole('data'));
+    const kwota = kol.uznania != null ? kwotaWyciag(pole('uznania')) || (kol.kwota != null ? kwotaWyciag(pole('kwota')) : 0) : kwotaWyciag(pole('kwota'));
+    if (!data || isNaN(kwota)) { if (w.length > 2) bledow++; continue; }
+    if (kwota <= 0) { if (kwota < 0 || kwotaWyciag(pole('obciazenia'))) obciazen++; continue; }
+    const nadawca = pole('nadawca').replace(/\s+/g, ' '), tytul = pole('tytul').replace(/\s+/g, ' '), rachunek = pole('rachunek').replace(/\s/g, '');
+    const podpis = [data, kwota.toFixed(2), norm(nadawca), norm(tytul), rachunek].join('|');
+    const n = (wystapienia.get(podpis) || 0) + 1;
+    wystapienia.set(podpis, n);
+    wplywy.push({id: 'wb' + skrot(podpis + (n > 1 ? '|' + n : '')), data, kwota, nadawca, tytul});
+  }
+  return {wplywy, obciazen, bledow, blad: ''};
+}
+
+const slowa = s => norm(s).split(/[^a-z0-9]+/).filter(x => x.length >= 2);
+/** Rdzeń słowa do porównań z odmianą: Kowalski -> kowalsk (Kowalskiego), Anna -> ann (Anny), Nowak -> nowa (Nowaka). */
+const rdzen = w => w.slice(0, Math.max(3, w.length - 1));
+
+/**
+ * Dopasowanie wpływu do uczestnika po nazwisku i imieniu w tytule przelewu (albo w nadawcy - rodzic ma zwykle to samo nazwisko).
+ * Punkty: 3 - imię i nazwisko w tytule, 2 - imię i nazwisko w tytule z nadawcą, 1 - tylko nazwisko; +0,5 za klasę w tytule (4B, kl. B).
+ * Wynik: {uid, pewne, kandydaci} - pewne tylko, gdy jedna osoba ma najwyższy wynik co najmniej 2.
+ */
+export function dopasujWplyw(wplyw, uczestnicy) {
+  const wTytule = slowa(wplyw.tytul), wSzystkie = [...wTytule, ...slowa(wplyw.nadawca)];
+  const tytulN = ' ' + norm(wplyw.tytul).replace(/[^a-z0-9]+/g, ' ') + ' ';
+  const klasaWTytule = kl => { const k = norm(kl); return k.length === 1 ? tytulN.includes(` 4${k} `) || tytulN.includes(` kl ${k} `) || tytulN.includes(` klasa ${k} `) || tytulN.includes(` ${k} `) && k !== 'i' : tytulN.includes(` ${k} `); };
+  const jest = (lista, w) => lista.some(t => t === w || (w.length >= 3 && t.startsWith(rdzen(w)) && Math.abs(t.length - w.length) <= 3));
+  const ocena = nazwa => {
+    const s = slowa(nazwa);
+    if (!s.length) return 0;
+    const nazwisko = s[0];
+    if (s.every(w => jest(wTytule, w))) return 3;
+    if (s.every(w => jest(wSzystkie, w))) return 2;
+    return nazwisko.length >= 3 && jest(wSzystkie, nazwisko) ? 1 : 0;
+  };
+  const wyniki = uczestnicy.map(u => ({u, p: Math.max(ocena(u.nazwa), u.partner ? ocena(u.partner) : 0)})).filter(x => x.p > 0)
+    .map(x => ({u: x.u, p: x.p + (x.u.klasa && klasaWTytule(x.u.klasa) ? 0.5 : 0)})).sort((a, b) => b.p - a.p);
+  if (!wyniki.length) return {uid: '', pewne: false, kandydaci: []};
+  const naj = wyniki.filter(x => x.p === wyniki[0].p);
+  const pewne = wyniki[0].p >= 2 && naj.length === 1;
+  return {uid: naj.length === 1 ? naj[0].u.id : '', pewne, kandydaci: wyniki.slice(0, 6).map(x => x.u.id)};
+}
+
+/** Czy wpłata tego uczestnika wpisana ręcznie wygląda na ten sam przelew (ta sama kwota, data +-5 dni). */
+export function mozliwyDuplikat(wplyw, uid, wplaty) {
+  return wplaty.some(w => w.uid === uid && !w.id.startsWith('wb') && Math.abs(w.kwota - wplyw.kwota) < 0.005 && Math.abs(dniMiedzy(w.data, wplyw.data)) <= 5);
+}
+
 /**
  * Nakłada operację (taką samą, jaka idzie do API) na stan. Idempotentna - działa po ID,
  * więc ponowne nałożenie operacji, którą serwer już zna, niczego nie dubluje.
@@ -116,6 +251,9 @@ export function zastosuj(stan, op) {
   switch (op.akcja) {
     case 'dodajWplate':
       if (!stan.wplaty.some(w => w.id === d.id)) stan.wplaty.push({id: d.id, uid: d.uid, data: d.data, kwota: d.kwota, uwagi: d.uwagi || ''});
+      break;
+    case 'importujWplaty':
+      d.lista.forEach(x => { if (!stan.wplaty.some(w => w.id === x.id)) stan.wplaty.push({id: x.id, uid: x.uid, data: x.data, kwota: x.kwota, uwagi: x.uwagi || ''}); });
       break;
     case 'usunWplate': usun(stan.wplaty, d.id); break;
     case 'zapiszUczestnika':

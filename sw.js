@@ -1,6 +1,6 @@
 // Service worker: aplikacja działa bez internetu. Pliki aplikacji - najpierw sieć (świeża wersja), awaryjnie kopia.
 // Czcionki Google - najpierw kopia. Zapytania do Apps Script przechodzą bez zmian (dane trzyma Magazyn).
-const WERSJA = 'studniowka-v4';
+const WERSJA = 'studniowka-v5';
 const PLIKI = ['./', 'index.html', 'styl.css', 'app.js', 'logika.js', 'dane.js', 'api.js', 'demo.js', 'manifest.webmanifest',
   'ikony/ikona.svg', 'ikony/ikona-192.png', 'ikony/ikona-512.png', 'ikony/apple-touch-icon.png'];
 

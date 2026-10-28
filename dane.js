@@ -88,7 +88,7 @@ export class Magazyn {
         if (r.ok || (USUWANIE.has(op.akcja) && /Nie znaleziono/.test(r.blad || ''))) {
           if (this.serwer) zastosuj(this.serwer, op);
           if (this.wTrakcieOdswiezania) this.wTrakcieOdswiezania.push(op);
-          if (op.akcja === 'importujUczestnikow') odswiezPo = true;
+          if (op.akcja === 'importujUczestnikow' || op.akcja === 'importujWplaty') odswiezPo = true;
         } else {
           odswiezPo = true;
           this.powiadom('blad', r.blad);

@@ -2,6 +2,7 @@
 import * as L from './logika.js';
 import {Magazyn} from './dane.js';
 import {transportAppsScript, transportDemo} from './api.js';
+import {daneDemo, wyciagDemo} from './demo.js';
 
 const {esc, zl, dt, dtk, RZ, procent} = L;
 const $ = s => document.querySelector(s);
@@ -18,6 +19,7 @@ const pamiec = (() => {
 
 let M = null, transport = null;
 let S = null, R = null, K = [], D = L.dzisISO();
+let bank = null, filtrBanku = 'wszystkie';
 let filtrKlasy = 'wszyscy', importPodglad = null, oknoOtwarte = null, toastT = null, instalacja = null, ostatniaTrasa = '';
 
 // ---------- połączenie z Arkuszem ----------
@@ -121,11 +123,11 @@ function nawigacja(widok, zal) {
   const odz = zal ? `<span class="badge">${zal}</span>` : '';
   const akt = w => (widok === w || (w === 'klasy' && widok === 'klasa')) ? ' class="on"' : '';
   $('#nav').innerHTML = [
-    ['pulpit', 'Pulpit', ''], ['wplata', 'Szybka wpłata', ''], ['klasy', 'Klasy', ''], ['zaleglosci', 'Zaległości', odz],
+    ['pulpit', 'Pulpit', ''], ['wplata', 'Szybka wpłata', ''], ['bank', 'Import z banku', ''], ['klasy', 'Klasy', ''], ['zaleglosci', 'Zaległości', odz],
     ['wydatki', 'Wydatki', ''], ['goscie', 'Lista gości', ''], ['ustawienia', 'Ustawienia', '']
   ].map(([h, t, b]) => `<a href="#${h}"${akt(h)}><span>${t}</span>${b}</a>`).join('');
   const ik = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${IKONY[n]}</svg>`;
-  const wiecejOn = ['wiecej', 'wydatki', 'goscie', 'ustawienia'].includes(widok) ? ' class="on"' : '';
+  const wiecejOn = ['wiecej', 'bank', 'wydatki', 'goscie', 'ustawienia'].includes(widok) ? ' class="on"' : '';
   $('#tabbar').innerHTML = `
     <a href="#pulpit"${akt('pulpit')}>${ik('pulpit')}Pulpit</a>
     <a href="#klasy"${akt('klasy')}>${ik('klasy')}Klasy</a>
@@ -290,7 +292,8 @@ function widokKlasa(id) {
 
 function widokWplata() {
   return `
-  <div class="view-head"><div><span class="eyebrow">Przelew przyszedł na konto?</span><h1>Szybka wpłata</h1></div></div>
+  <div class="view-head"><div><span class="eyebrow">Przelew przyszedł na konto?</span><h1>Szybka wpłata</h1></div>
+    <a class="btn hide-m" href="#bank">Import z banku</a></div>
   <input class="szukaj" id="szukaj" type="search" placeholder="Wpisz nazwisko ucznia lub osoby towarzyszącej" autocomplete="off" aria-label="Szukaj uczestnika">
   <div class="card lista" id="wyniki">${wynikiHtml('')}</div>`;
 }
@@ -439,9 +442,113 @@ function importPodgladHtml() {
     ${importPodglad.length - ok ? '<span class="small muted">Wiersze z błędem zostaną pominięte.</span>' : ''}</div>`;
 }
 
+// ---------- import z banku ----------
+const etykietaOsoby = u => `${u.nazwa} (${u.klasa})`;
+
+/** Stan wiersza wyciągu liczony przy każdym rysowaniu - wpłaty mogły w międzyczasie dojść z Arkusza. */
+function stanWplywu(w) {
+  if (S.wplaty.some(x => x.id === w.id)) return 'jest';
+  if (!w.uid || !S.uczestnicy.some(u => u.id === w.uid)) return 'brak';
+  if (L.mozliwyDuplikat(w, w.uid, S.wplaty)) return 'dubel';
+  return w.pewne ? 'pewne' : 'sprawdz';
+}
+const OPIS_STANU = {
+  jest: '<span class="pill ok">już w aplikacji</span>',
+  pewne: '<span class="pill ok">dopasowane</span>',
+  sprawdz: '<span class="pill warn">sprawdź osobę</span>',
+  dubel: '<span class="pill warn">chyba już wpisana ręcznie</span>',
+  brak: '<span class="pill bad">wybierz osobę</span>'
+};
+
+function wczytajWyciag(tekst, plik) {
+  const p = L.parsujWyciag(tekst);
+  if (p.blad) { bank = null; toast(p.blad); render(); return; }
+  bank = {plik, obciazen: p.obciazen, bledow: p.bledow, wplywy: p.wplywy.map(w => {
+    const d = L.dopasujWplyw(w, S.uczestnicy);
+    const x = {...w, uid: d.uid, pewne: d.pewne, kandydaci: d.kandydaci};
+    x.zazn = d.pewne && !L.mozliwyDuplikat(x, d.uid, S.wplaty);
+    return x;
+  })};
+  filtrBanku = 'wszystkie';
+  render();
+}
+function dekoduj(buf) {
+  try { return new TextDecoder('utf-8', {fatal: true}).decode(buf); } catch (e) { return new TextDecoder('windows-1250').decode(buf); }
+}
+
+function widokBank() {
+  const kroki = `<ol class="small">
+      <li>Zaloguj się do <b>Millenetu</b> na komputerze (w aplikacji na telefonie nie da się pobrać pliku).</li>
+      <li>Wejdź w <b>Moje finanse &gt; Wyciąg z historii transakcji</b>.</li>
+      <li>Wybierz konto studniówki, zakres dat (np. od 1 września do dziś) i format <b>CSV</b>, potem pobierz plik.</li>
+      <li>Tutaj kliknij <b>Wybierz plik z banku</b> i wskaż pobrany plik (zwykle w folderze Pobrane).</li>
+    </ol>
+    <p class="small muted">Możesz wczytywać pliki z nakładającymi się datami - przelewy już zapisane aplikacja rozpozna i pominie. Plik zostaje na Twoim komputerze, do Arkusza trafiają tylko wpłaty, które zatwierdzisz.</p>`;
+  const wybor = `<div class="przyciski"><label class="btn primary" for="bank-plik">Wybierz plik z banku</label><input type="file" id="bank-plik" accept=".csv,.txt,text/csv" hidden>
+      ${DEMO ? '<button class="btn" data-akcja="bank-demo" data-id="">Wczytaj przykładowy plik</button>' : ''}</div>`;
+  const glowa = `<div class="view-head"><div><span class="eyebrow">Wpłaty z wyciągu</span><h1>Import z banku</h1></div>
+    ${bank ? '<button class="btn" data-akcja="bank-wyczysc" data-id="">Inny plik</button>' : ''}</div>`;
+  if (!S.uczestnicy.length) return `${glowa}<div class="baner"><span><b>Najpierw potrzebna jest lista uczestników.</b> Wpłaty dopasowuję do osób z listy.</span><a class="btn small" href="#ustawienia">Import listy</a></div><section class="card pad sec">${kroki}</section>`;
+  if (!bank) return `${glowa}<section class="card pad sec"><h2>Jak pobrać plik z Millennium</h2>${kroki}${wybor}</section>`;
+
+  const wiersze = bank.wplywy.map((w, i) => ({w, i, st: stanWplywu(w)}));
+  const ile = st => wiersze.filter(x => st.includes(x.st)).length;
+  const grupy = {wszystkie: ['jest', 'pewne', 'sprawdz', 'dubel', 'brak'], decyzja: ['sprawdz', 'dubel', 'brak'], pewne: ['pewne'], jest: ['jest']};
+  const widoczne = wiersze.filter(x => grupy[filtrBanku].includes(x.st));
+  const doZapisu = wiersze.filter(x => x.w.zazn && ['pewne', 'sprawdz', 'dubel'].includes(x.st));
+  const suma = doZapisu.reduce((a, x) => a + x.w.kwota, 0);
+  const daty = bank.wplywy.map(w => w.data).sort();
+  const filtry = [['wszystkie', 'Wszystkie'], ['decyzja', 'Do decyzji'], ['pewne', 'Dopasowane'], ['jest', 'Już w aplikacji']]
+    .map(([f, t]) => `<button data-akcja="bank-filtr" data-id="${f}" class="${filtrBanku === f ? 'on' : ''}" aria-pressed="${filtrBanku === f}">${t} (${ile(grupy[f])})</button>`).join('');
+  const osoba = id => S.uczestnicy.find(u => u.id === id);
+  const zapisz = `<div class="przyciski"><button class="btn primary" data-akcja="bank-zapisz" data-id="" ${doZapisu.length ? '' : 'disabled'}>Zapisz zaznaczone wpłaty (${doZapisu.length}, ${zl(suma)})</button></div>`;
+  const tabela = widoczne.map(({w, i, st}) => {
+    const u = osoba(w.uid);
+    const chipy = st !== 'jest' && st !== 'pewne' ? w.kandydaci.filter(id => id !== w.uid).slice(0, 4).map(osoba).filter(Boolean)
+      .map(k => `<button class="btn small" data-akcja="bank-wybierz" data-id="${i}:${esc(k.id)}">${esc(etykietaOsoby(k))}</button>`).join(' ') : '';
+    return `<tr>
+      <td>${st === 'jest' ? '' : `<input type="checkbox" id="bk-z-${i}" data-bank="${i}" ${w.zazn ? 'checked' : ''} ${u ? '' : 'disabled'} aria-label="Zapisz tę wpłatę">`}</td>
+      <td class="small">${dt(w.data)}</td>
+      <td class="num"><b>${zl(w.kwota)}</b></td>
+      <td><span class="small">${esc(w.tytul || '-')}</span><span class="sub">${esc(w.nadawca)}</span></td>
+      <td>${st === 'jest' ? esc(u ? etykietaOsoby(u) : '') : `<input id="bk-u-${i}" data-bank-osoba="${i}" list="bk-lista" value="${esc(u ? etykietaOsoby(u) : '')}" placeholder="wpisz nazwisko" autocomplete="off" aria-label="Uczestnik">`}
+        ${chipy ? `<div class="small muted" style="margin-top:4px">Może: ${chipy}</div>` : ''}</td>
+      <td>${OPIS_STANU[st]}</td></tr>`;
+  }).join('') || `<tr><td colspan="6"><div class="pusto">Brak przelewów w tym widoku.</div></td></tr>`;
+  return `${glowa}
+  <section class="card pad sec">
+    <div class="rows">
+      <div><span>Plik</span><span>${esc(bank.plik)}</span></div>
+      <div><span>Pominięte obciążenia (wydatki, opłaty)</span><span>${bank.obciazen}</span></div>
+      ${bank.bledow ? `<div><span>Nieczytelne wiersze</span><span class="c-bad">${bank.bledow}</span></div>` : ''}
+      <div><span>Wpływy w pliku</span><span>${bank.wplywy.length}${daty.length ? ` (${dt(daty[0])} - ${dt(daty[daty.length - 1])})` : ''}</span></div>
+    </div>
+    <p class="small muted">Zaznaczone są tylko pewne dopasowania. Przy pozostałych wybierz osobę (wpisz nazwisko albo kliknij podpowiedź) i zaznacz. Przelewy, które nie są wpłatami na studniówkę, zostaw niezaznaczone.</p>
+    ${zapisz}
+  </section>
+  <div class="filtry">${filtry}</div>
+  <datalist id="bk-lista">${S.uczestnicy.slice().sort(L.porownaj).map(u => `<option value="${esc(etykietaOsoby(u))}">`).join('')}</datalist>
+  <div class="tab-wrap"><table>
+    <thead><tr><th></th><th>Data</th><th class="num">Kwota</th><th>Tytuł i nadawca</th><th>Uczestnik</th><th>Stan</th></tr></thead>
+    <tbody>${tabela}</tbody></table></div>
+  ${zapisz}`;
+}
+
+/** Przerysowanie po zmianie wyboru w imporcie - z bieżącego stanu, bez przywracania starych wartości pól. */
+function rysujBank() { ostatniaTrasa = ''; render(); }
+
+function zapiszZBanku() {
+  const lista = bank.wplywy.filter(w => w.zazn && ['pewne', 'sprawdz', 'dubel'].includes(stanWplywu(w)))
+    .map(w => ({id: w.id, uid: w.uid, data: w.data, kwota: w.kwota, uwagi: ('Bank: ' + [w.nadawca, w.tytul].filter(Boolean).join(' | ')).slice(0, 300)}));
+  if (!lista.length) return;
+  for (let i = 0; i < lista.length; i += 500) M.wykonaj('importujWplaty', {lista: lista.slice(i, i + 500)});
+  bank.wplywy.forEach(w => { w.zazn = false; });
+  toast(`Zapisano ${lista.length} wpłat (${zl(lista.reduce((a, w) => a + w.kwota, 0))}).`);
+}
+
 function widokWiecej() {
   return `<div class="view-head"><div><h1>Więcej</h1></div></div>
-  <div class="card wiecej"><a href="#wydatki">Wydatki <span class="muted">›</span></a><a href="#goscie">Lista gości i winietki <span class="muted">›</span></a><a href="#ustawienia">Ustawienia i połączenie <span class="muted">›</span></a></div>`;
+  <div class="card wiecej"><a href="#bank">Import wpłat z banku <span class="muted">›</span></a><a href="#wydatki">Wydatki <span class="muted">›</span></a><a href="#goscie">Lista gości i winietki <span class="muted">›</span></a><a href="#ustawienia">Ustawienia i połączenie <span class="muted">›</span></a></div>`;
 }
 
 // ---------- okna ----------
@@ -594,7 +701,7 @@ function render() {
   K = S.ustawienia.klasy.map(k => ({...k, pelna: k.pelna || k.nazwa, id: L.slug(k.nazwa)}));
   R = L.przelicz(S, D);
   nawigacja(widok, L.sumy(S.uczestnicy, R).zaleglych);
-  const V = {pulpit: widokPulpit, klasy: widokKlasy, wplata: widokWplata, zaleglosci: widokZaleglosci, wydatki: widokWydatki, goscie: widokGoscie, ustawienia: widokUstawienia, wiecej: widokWiecej};
+  const V = {pulpit: widokPulpit, klasy: widokKlasy, wplata: widokWplata, bank: widokBank, zaleglosci: widokZaleglosci, wydatki: widokWydatki, goscie: widokGoscie, ustawienia: widokUstawienia, wiecej: widokWiecej};
   const el = $('#widok');
   const rysuj = () => { el.innerHTML = widok === 'klasa' ? widokKlasa(arg) : (V[widok] || widokPulpit)(); };
   const klucz = location.hash;
@@ -645,6 +752,33 @@ document.addEventListener('click', e => {
     case 'odlacz': ['stud:polaczenie', 'stud:dane', 'stud:ostatnie', 'stud:bez-instalacji'].forEach(k => pamiec.removeItem(k)); location.replace(location.pathname); break;
     case 'reset-demo': transport('resetDemo', {}).then(() => { pamiec.removeItem(PREF + ':dane'); pamiec.removeItem(PREF + ':ostatnie'); location.reload(); }); break;
     case 'drukuj': drukuj(id ? el.closest('.grupa') : null); break;
+    case 'bank-demo': wczytajWyciag(wyciagDemo(daneDemo(D), D), 'przyklad-millennium.csv'); break;
+    case 'bank-wyczysc': bank = null; render(); break;
+    case 'bank-filtr': filtrBanku = id; rysujBank(); break;
+    case 'bank-zapisz': zapiszZBanku(); break;
+    case 'bank-wybierz': {
+      const [i, uid] = [id.slice(0, id.indexOf(':')), id.slice(id.indexOf(':') + 1)];
+      const w = bank && bank.wplywy[+i];
+      if (w) { w.uid = uid; w.pewne = false; w.zazn = true; rysujBank(); }
+      break;
+    }
+  }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'bank-plik' && t.files && t.files[0]) {
+    const plik = t.files[0];
+    plik.arrayBuffer().then(buf => wczytajWyciag(dekoduj(buf), plik.name), () => toast('Nie udało się odczytać pliku.'));
+    t.value = '';
+  } else if (t.dataset.bank != null && bank) {
+    bank.wplywy[+t.dataset.bank].zazn = t.checked; rysujBank();
+  } else if (t.dataset.bankOsoba != null && bank) {
+    const w = bank.wplywy[+t.dataset.bankOsoba], v = t.value.trim();
+    const u = S.uczestnicy.find(x => etykietaOsoby(x) === v);
+    if (u) { w.uid = u.id; w.pewne = false; w.zazn = true; }
+    else if (!v) { w.uid = ''; w.zazn = false; }
+    else { toast('Wybierz osobę z podpowiedzi (nazwisko i klasa).'); return; }
+    rysujBank();
   }
 });
 document.addEventListener('keydown', e => {

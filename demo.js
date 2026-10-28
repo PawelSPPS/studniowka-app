@@ -12,6 +12,45 @@ const IMIONA_K = ['Anna', 'Maria', 'Zuzanna', 'Julia', 'Zofia', 'Maja', 'Hanna',
 const IMIONA_M = ['Jakub', 'Antoni', 'Jan', 'Szymon', 'Filip', 'Kacper', 'Mikołaj', 'Wojciech', 'Adam', 'Michał', 'Bartosz', 'Igor', 'Mateusz', 'Piotr', 'Tymon', 'Franciszek', 'Aleksander', 'Wiktor', 'Oskar', 'Dawid', 'Marcel', 'Kamil', 'Hubert', 'Patryk', 'Stanisław', 'Maksymilian'];
 const NAZWISKA = ['Nowak', 'Kowalski', 'Wiśniewski', 'Wójcik', 'Kowalczyk', 'Kamiński', 'Lewandowski', 'Zieliński', 'Szymański', 'Woźniak', 'Dąbrowski', 'Kozłowski', 'Jankowski', 'Mazur', 'Wojciechowski', 'Kwiatkowski', 'Krawczyk', 'Kaczmarek', 'Piotrowski', 'Grabowski', 'Zając', 'Pawłowski', 'Michalski', 'Król', 'Wieczorek', 'Jabłoński', 'Wróbel', 'Nowakowski', 'Majewski', 'Olszewski', 'Stępień', 'Malinowski', 'Jaworski', 'Adamczyk', 'Dudek', 'Nowicki', 'Pawlak', 'Górski', 'Witkowski', 'Walczak', 'Sikora', 'Baran', 'Rutkowski', 'Michalak', 'Szewczyk', 'Ostrowski', 'Tomaszewski', 'Pietrzak', 'Zalewski', 'Wróblewski', 'Marciniak', 'Jasiński', 'Zawadzki', 'Bąk', 'Jakubowski', 'Sadowski', 'Duda', 'Włodarczyk', 'Wilk', 'Chmielewski'];
 
+/**
+ * Zmyślony wyciąg CSV w układzie Millennium (do wypróbowania importu w trybie demo). Zawiera przelewy z pełnym nazwiskiem w tytule,
+ * od samego ucznia, od rodzica (tylko nazwisko), w odmianie, kilka już wpisanych ręcznie, jeden nieznany i obciążenia (wydatki).
+ */
+export function wyciagDemo(stan, dzis) {
+  const r = mulberry32(777), q = s => `"${String(s).replace(/"/g, '""')}"`;
+  const nr = '12 1160 2202 0000 0000 1234 5678';
+  const wiersze = [];
+  const dodaj = (data, kto, opis, kwota, konto = '') => wiersze.push([nr, data, data, kwota > 0 ? 'PRZELEW PRZYCHODZĄCY' : 'PRZELEW WYCHODZĄCY', konto, kto, opis, kwota < 0 ? kwota.toFixed(2) : '', kwota > 0 ? kwota.toFixed(2) : '', '', 'PLN']);
+  const konto = () => '' + Math.floor(r() * 9e9 + 1e9) + Math.floor(r() * 9e9 + 1e9);
+  const dzien = () => dodajDni(dzis, -Math.floor(r() * 20));
+  const wplacone = new Map();
+  stan.wplaty.forEach(w => wplacone.set(w.uid, (wplacone.get(w.uid) || 0) + w.kwota));
+  const kandydaci = stan.uczestnicy.filter((u, i) => i % 7 === 2).slice(0, 30);
+  kandydaci.forEach((u, i) => {
+    const [nazwisko, imie] = u.nazwa.split(' ');
+    const kwota = (wplacone.get(u.id) || 0) >= 500 ? (u.typ === 'para' ? 400 : 375) : 500;
+    const k = u.klasa.length === 1 ? '4' + u.klasa : u.klasa;
+    const odmiana = /ski$/.test(nazwisko) ? nazwisko + 'ego' : /ska$/.test(nazwisko) ? nazwisko.slice(0, -1) + 'iej' : /[^aeiouy]$/.test(nazwisko) ? nazwisko + 'a' : nazwisko;
+    const warianty = [
+      () => dodaj(dzien(), `${imie.toUpperCase()} ${nazwisko.toUpperCase()} UL. SZKOLNA 1 00-001 WARSZAWA`, `Studniówka ${imie} ${nazwisko} kl. ${k}`, kwota, konto()),
+      () => dodaj(dzien(), `${nazwisko} ${imie}`, `Wpłata na studniówkę rata`, kwota, konto()),
+      () => dodaj(dzien(), `${nazwisko.replace(/ski$/, 'ska')} Barbara`, `studniowka ${u.klasa}`, kwota, konto()),
+      () => dodaj(dzien(), `Rodzice ${nazwisko}`, `Opłata za ${imie} ${odmiana} ${k}`, kwota, konto())
+    ];
+    warianty[i % warianty.length]();
+  });
+  stan.wplaty.slice(0, 3).forEach(w => {
+    const u = stan.uczestnicy.find(x => x.id === w.uid);
+    dodaj(w.data, u.nazwa.toUpperCase(), 'Studniówka ' + u.nazwa, w.kwota, konto());
+  });
+  dodaj(dzien(), 'JAN TESTOWY', 'Wpłata', 875, konto());
+  dodaj(dzien(), 'HOTEL POD DĘBAMI SP. Z O.O.', 'Zaliczka sala studniówka', -20000, konto());
+  dodaj(dzien(), '', 'OPŁATA ZA PROWADZENIE RACHUNKU', -10);
+  wiersze.sort((a, b) => b[1].localeCompare(a[1]));
+  const nag = ['Numer rachunku/karty', 'Data transakcji', 'Data rozliczenia', 'Rodzaj transakcji', 'Na konto/Z konta', 'Odbiorca/Zleceniodawca', 'Opis', 'Obciążenia', 'Uznania', 'Saldo', 'Waluta'];
+  return [nag, ...wiersze].map(w => w.map(q).join(',')).join('\r\n');
+}
+
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
 /** Stan w kształcie odpowiedzi backendu (akcja stan). Wpłaty i płatności tylko do dnia `dzis`. */
