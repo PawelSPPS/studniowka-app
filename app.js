@@ -414,7 +414,7 @@ function widokUstawienia() {
       <input id="ust-goscie" type="number" min="0" step="1" value="${S.ustawienia.goscie || 0}" inputmode="numeric"></label>
       <div><button class="btn primary">Zapisz</button></div></form></section>
   <section class="card pad sec"><h2>Import uczestników</h2>
-    <p class="small muted">Skopiuj kolumny z Excela i wklej poniżej. Kolejność: nazwisko i imię, klasa, osoba/para, osoba towarzysząca (tylko dla par).</p>
+    <p class="small muted">Skopiuj kolumny z Excela i wklej poniżej. Kolejność: nazwisko i imię, klasa, osoba/para, opcjonalnie nazwisko osoby towarzyszącej (tylko para).</p>
     <form class="form" data-form="import">
       <label for="imp-tekst">Wklejone wiersze<textarea id="imp-tekst" placeholder="Nowak Anna&#9;B&#9;osoba"></textarea></label>
       <div class="przyciski"><button class="btn">Sprawdź</button></div>
@@ -463,7 +463,7 @@ function oknoOsoba(id) {
   else if (opcje.length && opcje[0][0] === r.pozostalo) opcje[0][1] += ' = całość';
   pokaz(`
   <header class="sheet-head"><div><span class="eyebrow">${esc(k.pelna)} · ${u.typ === 'para' ? 'para' : 'osoba'}</span><h2 id="sheet-tytul">${esc(u.nazwa)}</h2>
-    ${u.typ === 'para' ? `<span class="small muted">osoba towarzysząca: ${esc(u.partner || 'brak nazwiska')}</span>` : ''}</div>
+    ${u.typ === 'para' ? `<span class="small muted">${u.partner ? 'osoba towarzysząca: ' + esc(u.partner) : 'z osobą towarzyszącą'}</span>` : ''}</div>
     <button class="x" data-akcja="zamknij" data-id="" aria-label="Zamknij">✕</button></header>
   <div class="sheet-body">
     <section>
@@ -500,7 +500,7 @@ function formOsoby(u, kl, ileWplat = 0) {
       <label for="os-klasa">Klasa<select id="os-klasa">${K.map(k => `<option value="${esc(k.nazwa)}" ${k.nazwa === kl ? 'selected' : ''}>${esc(k.pelna)}</option>`).join('')}</select></label>
       <label for="os-typ">Typ<select id="os-typ"><option value="osoba">osoba (${zl(L.sumaTypu(raty(), 'osoba'))})</option><option value="para" ${u && u.typ === 'para' ? 'selected' : ''}>para (${zl(L.sumaTypu(raty(), 'para'))})</option></select></label>
     </div>
-    <label for="os-partner">Osoba towarzysząca (tylko para)<input id="os-partner" value="${esc(u ? u.partner : '')}" maxlength="100"></label>
+    <label for="os-partner">Osoba towarzysząca (tylko para, opcjonalnie)<input id="os-partner" value="${esc(u ? u.partner : '')}" maxlength="100"></label>
     <label for="os-uwagi">Uwagi<input id="os-uwagi" value="${esc(u ? u.uwagi : '')}" maxlength="300"></label>
     <div class="przyciski" style="justify-content:space-between"><button class="btn primary">${u ? 'Zapisz zmiany' : 'Dodaj osobę'}</button>
     ${u && !ileWplat ? `<button type="button" class="btn danger" data-akcja="usun-osobe" data-id="${esc(u.id)}" data-potwierdz="Na pewno usunąć?">Usuń osobę</button>` : ''}</div>

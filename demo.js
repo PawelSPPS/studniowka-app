@@ -68,7 +68,7 @@ export function daneDemo(dzis) {
   ];
   return {
     uczestnicy, wplaty: wplaty.filter(w => w.data <= dzis), wydatki,
-    ustawienia: {raty: RATY, klasy: KLASY, goscie: 42, kategorie: KATEGORIE},
+    ustawienia: {raty: RATY, klasy: KLASY, goscie: 80, kategorie: KATEGORIE},
     arkuszUrl: ''
   };
 }
