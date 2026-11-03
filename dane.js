@@ -3,7 +3,7 @@
 import {zastosuj} from './logika.js';
 
 const klon = o => JSON.parse(JSON.stringify(o));
-const USUWANIE = new Set(['usunWplate', 'usunUczestnika', 'usunWydatek', 'usunPlatnosc']);
+const USUWANIE = new Set(['usunWplate', 'usunUczestnika', 'usunWydatek', 'usunPlatnosc', 'usunGoscia']);
 
 export class Magazyn {
   /**
@@ -88,7 +88,7 @@ export class Magazyn {
         if (r.ok || (USUWANIE.has(op.akcja) && /Nie znaleziono/.test(r.blad || ''))) {
           if (this.serwer) zastosuj(this.serwer, op);
           if (this.wTrakcieOdswiezania) this.wTrakcieOdswiezania.push(op);
-          if (op.akcja === 'importujUczestnikow' || op.akcja === 'importujWplaty') odswiezPo = true;
+          if (['importujUczestnikow', 'importujWplaty', 'importujGosci'].includes(op.akcja)) odswiezPo = true;
         } else {
           odswiezPo = true;
           this.powiadom('blad', r.blad);

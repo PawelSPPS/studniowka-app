@@ -20,7 +20,7 @@ const pamiec = (() => {
 let M = null, transport = null;
 let S = null, R = null, K = [], D = L.dzisISO();
 let bank = null, filtrBanku = 'wszystkie';
-let filtrKlasy = 'wszyscy', importPodglad = null, oknoOtwarte = null, toastT = null, instalacja = null, ostatniaTrasa = '';
+let filtrKlasy = 'wszyscy', importPodglad = null, gosciePodglad = null, oknoOtwarte = null, toastT = null, instalacja = null, ostatniaTrasa = '';
 
 // ---------- połączenie z Arkuszem ----------
 function wczytajPolaczenie() {
@@ -190,7 +190,7 @@ function widokPulpit() {
   }).join('');
   const zapas = s.wymagane - w.umowy;
   const osTow = S.uczestnicy.filter(u => u.typ === 'para').length;
-  const goscie = S.ustawienia.goscie || 0;
+  const goscie = L.liczbaGosci(S);
   return `${banery()}
   <div class="view-head"><div><span class="eyebrow">Stan na ${dt(D)}</span><h1>Pulpit</h1></div>
     <span class="przyciski"><button class="btn" data-akcja="drukuj" data-id="">Drukuj</button><a class="btn primary" href="#wplata">+ Dodaj wpłatę</a></span></div>
@@ -227,7 +227,7 @@ function widokPulpit() {
         <div><span>Nauczyciele i goście</span><span>${goscie}</span></div>
         <div><span>Razem na sali</span><span>${s.osob + osTow + goscie}</span></div>
       </div>
-      <p class="small muted">Liczbę nauczycieli i gości zmienisz w <a href="#ustawienia">Ustawieniach</a>.</p>
+      <p class="small muted">Nauczycieli i gości z nazwiska wpisano ${(S.goscie || []).length}, planowano ${S.ustawienia.goscie || 0} - liczy się większa z tych liczb. Nazwiska: <a href="#goscie">Lista gości</a>, planowana liczba: <a href="#ustawienia">Ustawienia</a>.</p>
     </div>
   </section>`;
 }
@@ -362,25 +362,75 @@ function widokWydatki() {
   <p class="small muted nie-drukuj">Kliknij wydatek, żeby dodać zaliczkę, dopłatę lub zwrot albo poprawić kwotę z umowy.</p>`;
 }
 
+const RODZAJE = [['nauczyciel', 'Nauczyciele'], ['gość', 'Goście']];
+const gosciePosort = () => (S.goscie || []).slice().sort(L.porownaj);
 function goscieTekst() {
-  return K.map(k => {
+  const klasy = K.map(k => {
     const l = S.uczestnicy.filter(u => u.klasa === k.nazwa).sort(L.porownaj);
     if (!l.length) return '';
     return `${k.pelna}\n` + l.map(u => L.imieNazwisko(u.nazwa) + (u.typ === 'para' && u.partner ? `\n${L.imieNazwisko(u.partner)} (os. tow.)` : '')).join('\n');
-  }).filter(Boolean).join('\n\n');
+  });
+  const goscie = RODZAJE.map(([r, t]) => {
+    const l = gosciePosort().filter(g => g.rodzaj === r);
+    return l.length ? `${t}\n` + l.map(g => L.imieNazwisko(g.nazwa)).join('\n') : '';
+  });
+  return [...klasy, ...goscie].filter(Boolean).join('\n\n');
 }
 function widokGoscie() {
-  const pary = S.uczestnicy.filter(u => u.typ === 'para').length, n = S.uczestnicy.length, g = S.ustawienia.goscie || 0;
+  const pary = S.uczestnicy.filter(u => u.typ === 'para').length, n = S.uczestnicy.length, g = L.liczbaGosci(S);
+  const lista = gosciePosort(), plan = S.ustawienia.goscie || 0;
+  const grupy = RODZAJE.map(([r, t]) => {
+    const l = lista.filter(x => x.rodzaj === r);
+    return `<div class="card pad grupa"><h2>${t} <span class="muted small">· ${l.length} os.</span></h2>
+      <div class="small">${l.map(x => `<div class="wiersz-klik" data-akcja="gosc" data-id="${esc(x.id)}" tabindex="0">${esc(L.imieNazwisko(x.nazwa))}${x.uwagi ? ` <span class="muted">· ${esc(x.uwagi)}</span>` : ''}</div>`).join('') || '<span class="muted">nikogo jeszcze nie wpisano</span>'}</div></div>`;
+  }).join('');
   return `
   <div class="view-head"><div><span class="eyebrow tylko-druk">Stan na ${dt(D)}</span><h1>Lista gości</h1>
     <span class="muted">${n} uczniów + ${pary} os. towarzyszących + ${g} nauczycieli i gości = <b>${n + pary + g}</b> miejsc</span></div>
     <span class="przyciski"><button class="btn" data-akcja="drukuj" data-id="">Drukuj</button><button class="btn primary" data-akcja="kopiuj-goscie" data-id="">Kopiuj listę do winietek</button></span></div>
+  <section class="sec"><div class="sec-head"><h2>Nauczyciele i goście</h2><span class="przyciski nie-drukuj"><button class="btn small" data-akcja="nowy-gosc" data-id="">+ Dodaj osobę</button><button class="btn small" data-akcja="goscie-wklej" data-id="">Wklej listę</button></span></div>
+    <p class="small muted nie-drukuj">Z nazwiska wpisano ${lista.length}, planowano ${plan} (do zmiany w <a href="#ustawienia">Ustawieniach</a>). Nie płacą - lista służy do liczby miejsc i winietek. Kliknij osobę, żeby poprawić lub usunąć.</p>
+    <div class="klasy-grid lista-gosci">${grupy}</div>
+    <div id="goscie-wklej" class="card pad sec nie-drukuj" ${gosciePodglad === null ? 'hidden' : ''}>
+      <h3>Wklej listę nauczycieli lub gości</h3>
+      <p class="small muted">Każda osoba w osobnej linii: <b>Nazwisko i imię</b>, po przecinku opcjonalnie <b>nauczyciel</b> albo <b>gość</b> i uwagi. Bez rodzaju w linii - wszyscy dostaną rodzaj wybrany niżej. Z Excela: zaznacz kolumny, Ctrl+C, Ctrl+V w polu.</p>
+      <form class="form" data-form="goscie-import">
+        <label for="gi-tekst">Lista osób<textarea id="gi-tekst" placeholder="Kowalska Anna&#10;Nowak Jan, gość"></textarea></label>
+        <div class="rzad"><label for="gi-rodzaj">Rodzaj dla linii bez rodzaju<select id="gi-rodzaj"><option value="nauczyciel">nauczyciel</option><option value="gość">gość</option></select></label></div>
+        <div class="przyciski"><button class="btn">Sprawdź</button><button type="button" class="btn" data-akcja="goscie-wklej-zamknij" data-id="">Zamknij</button></div>
+      </form>
+      <div id="gi-podglad">${gosciePodglad ? gosciePodgladHtml() : ''}</div>
+    </div>
+  </section>
+  <section class="sec"><div class="sec-head"><h2>Uczniowie i osoby towarzyszące</h2></div>
   <div class="klasy-grid lista-gosci">
   ${K.map(k => {
     const l = S.uczestnicy.filter(u => u.klasa === k.nazwa).sort(L.porownaj);
     return `<div class="card pad grupa"><h2>${esc(k.pelna)} <span class="muted small">· ${l.length + l.filter(u => u.typ === 'para').length} miejsc</span></h2>
       <div class="small">${l.map(u => `<div>${esc(L.imieNazwisko(u.nazwa))}${u.typ === 'para' ? ` <span class="muted">+ ${esc(u.partner ? L.imieNazwisko(u.partner) : 'osoba towarzysząca')}</span>` : ''}</div>`).join('') || '<span class="muted">brak osób</span>'}</div></div>`;
-  }).join('')}</div>`;
+  }).join('')}</div></section>`;
+}
+function gosciePodgladHtml() {
+  const ok = gosciePodglad.filter(x => !x.blad).length;
+  return `<div class="tab-wrap"><table><thead><tr><th>Lp.</th><th>Nazwisko i imię</th><th>Rodzaj</th><th>Uwagi</th><th>Stan</th></tr></thead><tbody>
+    ${gosciePodglad.map((x, i) => `<tr class="${x.blad ? 'c-bad' : ''}"><td class="lp">${i + 1}</td><td>${esc(x.nazwa)}</td><td>${esc(x.rodzaj)}</td><td>${esc(x.uwagi)}</td><td>${x.blad ? `<span class="pill bad">${esc(x.blad)}</span>` : '<span class="pill ok">do dodania</span>'}</td></tr>`).join('')}
+  </tbody></table></div>
+  <div class="przyciski">${ok ? `<button class="btn primary" data-akcja="goscie-import-dodaj" data-id="">Dodaj ${ok} os.</button>` : '<span class="muted small">Nie ma nic do dodania.</span>'}</div>`;
+}
+function oknoGosc(id) {
+  const g = id ? (S.goscie || []).find(x => x.id === id) : null;
+  if (id && !g) return zamknij();
+  pokaz(`<header class="sheet-head"><div><span class="eyebrow">${g ? (g.rodzaj === 'nauczyciel' ? 'Nauczyciel' : 'Gość') : 'Nauczyciele i goście'}</span><h2 id="sheet-tytul">${g ? esc(g.nazwa) : 'Nowa osoba'}</h2></div>
+    <button class="x" data-akcja="zamknij" data-id="" aria-label="Zamknij">✕</button></header>
+  <div class="sheet-body"><form class="form" data-form="gosc" data-id="${g ? esc(g.id) : ''}">
+    <label for="g-nazwa">Nazwisko i imię<input id="g-nazwa" value="${esc(g ? g.nazwa : '')}" maxlength="100" required></label>
+    <div class="rzad">
+      <label for="g-rodzaj">Rodzaj<select id="g-rodzaj"><option value="nauczyciel">nauczyciel</option><option value="gość" ${g && g.rodzaj === 'gość' ? 'selected' : ''}>gość</option></select></label>
+      <label for="g-uwagi">Uwagi<input id="g-uwagi" value="${esc(g ? g.uwagi : '')}" maxlength="300" placeholder="np. z osobą towarzyszącą"></label>
+    </div>
+    <div class="przyciski" style="justify-content:space-between"><button class="btn primary">${g ? 'Zapisz zmiany' : 'Dodaj osobę'}</button>
+    ${g ? `<button type="button" class="btn danger" data-akcja="usun-goscia" data-id="${esc(g.id)}" data-potwierdz="Na pewno usunąć?">Usuń</button>` : ''}</div>
+  </form></div>`);
 }
 
 function widokUstawienia() {
@@ -413,7 +463,8 @@ function widokUstawienia() {
     <p class="small muted">Zmianę kwot lub terminów rat zgłoś Pawłowi.</p></section>
   <section class="sec"><h2>Klasy</h2><p>${K.map(k => esc(k.pelna)).join(', ')}</p><p class="small muted">Zmianę listy klas zgłoś Pawłowi.</p></section>
   <section class="card pad sec"><h2>Nauczyciele i goście</h2>
-    <form class="form" data-form="goscie"><label for="ust-goscie">Liczba osób (tylko do liczby miejsc na sali, nie płacą)
+    <p class="small muted">Nazwiska wpisujesz w <a href="#goscie">Liście gości</a>. Tu tylko planowana liczba - do liczby miejsc na sali, dopóki lista z nazwiskami nie jest pełna (liczy się większa z tych liczb). Nie płacą.</p>
+    <form class="form" data-form="goscie"><label for="ust-goscie">Planowana liczba osób
       <input id="ust-goscie" type="number" min="0" step="1" value="${S.ustawienia.goscie || 0}" inputmode="numeric"></label>
       <div><button class="btn primary">Zapisz</button></div></form></section>
   <section class="card pad sec" id="sekcja-import"><h2>Import uczestników</h2>
@@ -575,7 +626,7 @@ function zamknij() { $('#modal').hidden = true; oknoOtwarte = null; }
 function odswiezOkno() {
   if (!oknoOtwarte || $('#modal').hidden) return;
   const [typ, id] = oknoOtwarte;
-  zachowajFormularze($('#sheet'), () => { if (typ === 'osoba') oknoOsoba(id); else if (typ === 'wydatek') oknoWydatek(id); });
+  zachowajFormularze($('#sheet'), () => { if (typ === 'osoba') oknoOsoba(id); else if (typ === 'wydatek') oknoWydatek(id); else if (typ === 'gosc') oknoGosc(id); });
 }
 
 function oknoOsoba(id) {
@@ -757,6 +808,19 @@ document.addEventListener('click', e => {
       break;
     }
     case 'kopiuj-goscie': kopiuj('Lista do winietek', goscieTekst()); break;
+    case 'gosc': oknoOtwarte = ['gosc', id]; oknoGosc(id); break;
+    case 'nowy-gosc': oknoOtwarte = null; oknoGosc(null); break;
+    case 'usun-goscia': zamknij(); M.wykonaj('usunGoscia', {id}); toast('Usunięto z listy.'); break;
+    case 'goscie-wklej': gosciePodglad = []; render(); $('#gi-tekst').focus(); break;
+    case 'goscie-wklej-zamknij': gosciePodglad = null; render(); break;
+    case 'goscie-import-dodaj': {
+      const lista = gosciePodglad.filter(x => !x.blad).map(x => ({id: L.nid('g'), nazwa: x.nazwa, rodzaj: x.rodzaj, uwagi: x.uwagi}));
+      gosciePodglad = null;
+      M.wykonaj('importujGosci', {lista});
+      window.scrollTo(0, 0);
+      toast(`Dodano ${lista.length} os.`);
+      break;
+    }
     case 'import-dodaj': {
       const lista = importPodglad.filter(x => !x.blad).map(x => ({id: L.nid('u'), nazwa: x.nazwa, klasa: x.klasa, typ: x.typ, partner: x.partner}));
       importPodglad = null; $('#imp-tekst').value = '';
@@ -864,6 +928,19 @@ document.addEventListener('submit', e => {
       else { const nowy = {id: L.nid('e'), ...dane}; oknoOtwarte = ['wydatek', nowy.id]; M.wykonaj('zapiszWydatek', nowy); oknoWydatek(nowy.id); }
       break;
     }
+    case 'gosc': {
+      const dane = {nazwa: $('#g-nazwa').value.trim(), rodzaj: $('#g-rodzaj').value, uwagi: $('#g-uwagi').value.trim()};
+      if (!dane.nazwa) return;
+      zamknij();
+      if (id) { M.wykonaj('zapiszGoscia', {id, ...dane}); toast('Zapisano zmiany.'); }
+      else { M.wykonaj('zapiszGoscia', {id: L.nid('g'), ...dane}); toast('Dodano do listy.'); }
+      break;
+    }
+    case 'goscie-import': {
+      gosciePodglad = L.parsujGosci($('#gi-tekst').value, $('#gi-rodzaj').value, S.goscie);
+      $('#gi-podglad').innerHTML = gosciePodglad.length ? gosciePodgladHtml() : '<p class="small muted">Nic nie wklejono.</p>';
+      break;
+    }
     case 'goscie': {
       const g = parseInt($('#ust-goscie').value, 10);
       if (!(g >= 0 && g <= 2000)) { toast('Podaj liczbę od 0 do 2000.'); return; }
@@ -879,7 +956,7 @@ document.addEventListener('submit', e => {
 $('#modal').addEventListener('click', e => { if (e.target === $('#modal')) zamknij(); });
 window.addEventListener('hashchange', () => {
   if (L.parsujLinkPolaczenia(location.hash)) { location.reload(); return; }
-  filtrKlasy = 'wszyscy'; zamknij(); render(); window.scrollTo(0, 0);
+  filtrKlasy = 'wszyscy'; gosciePodglad = null; zamknij(); render(); window.scrollTo(0, 0);
   if (doImportu) przewinDoImportu();
   if (location.hash === '#wplata' && matchMedia('(min-width:900px)').matches) $('#szukaj')?.focus();
 });

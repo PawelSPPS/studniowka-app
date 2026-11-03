@@ -105,8 +105,14 @@ export function daneDemo(dzis) {
     wyd('Zaproszenia', 'Drukarnia', 900, [['2026-11-20', 900, 'Całość']]),
     wyd('Prowizje bankowe', 'Bank - opłaty za konto', 120, ['2026-09-30', '2026-10-31', '2026-11-30', '2026-12-31'].map(d => [d, 10, 'Opłata miesięczna']))
   ];
+  const goscie = [
+    ['Sowińska Barbara', 'nauczyciel', 'dyrektor, z osobą towarzyszącą'], ['Wrona Tadeusz', 'nauczyciel', 'wicedyrektor'],
+    ['Lis Agnieszka', 'nauczyciel', 'wych. A'], ['Borowski Marek', 'nauczyciel', 'wych. B'], ['Kaleta Joanna', 'nauczyciel', ''],
+    ['Pyrek Robert', 'nauczyciel', ''], ['Szulc Monika', 'nauczyciel', ''], ['Ks. Nowicki Andrzej', 'gość', ''],
+    ['Rybak Ewa', 'gość', 'Rada Rodziców'], ['Mączka Jerzy', 'gość', 'burmistrz, zaproszenie wysłane'], ['Studio Kadr', 'gość', 'fotograf, nie liczyć do stołu']
+  ].map(([nazwa, rodzaj, uwagi]) => ({id: id('g'), nazwa, rodzaj, uwagi}));
   return {
-    uczestnicy, wplaty: wplaty.filter(w => w.data <= dzis), wydatki,
+    uczestnicy, wplaty: wplaty.filter(w => w.data <= dzis), wydatki, goscie,
     ustawienia: {raty: RATY, klasy: KLASY, goscie: 80, kategorie: KATEGORIE},
     arkuszUrl: ''
   };

@@ -276,9 +276,34 @@ export function zastosuj(stan, op) {
       break;
     }
     case 'usunPlatnosc': stan.wydatki.forEach(e => usun(e.platnosci, d.id)); break;
+    case 'zapiszGoscia': upsert(stan.goscie || (stan.goscie = []), {id: d.id, nazwa: d.nazwa, rodzaj: d.rodzaj, uwagi: d.uwagi || ''}); break;
+    case 'usunGoscia': usun(stan.goscie || [], d.id); break;
+    case 'importujGosci':
+      d.lista.forEach(x => { if (!(stan.goscie || (stan.goscie = [])).some(g => g.id === x.id)) stan.goscie.push({id: x.id, nazwa: x.nazwa, rodzaj: x.rodzaj, uwagi: x.uwagi || ''}); });
+      break;
     case 'zapiszUstawienia': if ('goscie' in d) stan.ustawienia.goscie = d.goscie; break;
   }
   return stan;
+}
+
+/** Wklejona lista nauczycieli i gości: "Nazwisko Imię" w linii, opcjonalnie ", nauczyciel" albo ", gość" (domyślnie rodzaj z parametru). */
+export function parsujGosci(txt, rodzajDomyslny, goscie) {
+  const istniejacy = new Set((goscie || []).map(g => norm(g.nazwa).replace(/\s+/g, ' ').trim()));
+  const rodzajZ = t => { const r = norm(t); return /^nauczyciel/.test(r) || r === 'n' ? 'nauczyciel' : /^gosc/.test(r) || r === 'g' ? 'gość' : ''; };
+  return String(txt).split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+    const c = l.split(l.includes('\t') ? '\t' : l.includes(';') ? ';' : ',').map(x => x.trim());
+    const nazwa = c[0] || '', rodzaj = c[1] ? rodzajZ(c[1]) : rodzajDomyslny, uwagi = c.slice(2).filter(Boolean).join(', ');
+    let blad = '';
+    if (!nazwa) blad = 'brak nazwiska';
+    else if (!rodzaj) blad = `nieznany rodzaj "${c[1]}" (nauczyciel albo gość)`;
+    else if (istniejacy.has(norm(nazwa).replace(/\s+/g, ' ').trim())) blad = 'już jest na liście';
+    return {nazwa, rodzaj, uwagi, blad};
+  });
+}
+
+/** Nauczyciele i goście do liczby miejsc: planowana liczba z Ustawień, chyba że lista z nazwiskami jest już dłuższa. */
+export function liczbaGosci(stan) {
+  return Math.max((stan.goscie || []).length, stan.ustawienia.goscie || 0);
 }
 
 /** Tekst listy zaległości do wysłania wychowawcy. */

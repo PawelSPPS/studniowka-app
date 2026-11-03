@@ -228,6 +228,9 @@ details[open] summary{margin-bottom:10px}
 /* wydruk: jasne kolory niezależnie od motywu, bez menu i przycisków, znaczniki rat w kolorze */
 .tylko-druk{display:none}
 .lista-gosci{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.wiersz-klik{cursor:pointer;padding:3px 6px;margin:0 -6px;border-radius:6px}
+.wiersz-klik:hover,.wiersz-klik:focus-visible{background:var(--bg2,rgba(0,0,0,.05));outline:none}
+.card h3{margin:0 0 6px;font-size:1rem}
 @media print{
   :root{--bg:#fff;--surface:#fff;--surface-2:#eef1f6;--line:#c5ccd9;--ink:#000;--muted:#444;--accent:#1f3590;--accent-soft:#e6ebf8;
     --ok:#14633e;--ok-soft:#dbeee3;--warn:#7a4a04;--warn-soft:#f5e8cf;--bad:#9d1b24;--bad-soft:#f7dadc;--shadow:none;color-scheme:light}
